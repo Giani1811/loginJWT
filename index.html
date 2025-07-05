@@ -12,8 +12,8 @@
     
     <script>
         // Configurar Supabase (reemplaza con tus credenciales)
-        const SUPABASE_URL = 'https://kdxgwqszxdaexnrcyhvz.supabase.co'
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtkeGd3cXN6eGRhZXhucmN5aHZ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE2ODMzOTIsImV4cCI6MjA2NzI1OTM5Mn0.xPFSROtY_7dtQ0MoSs5kGbqk8o8rRv3VvbOhq-OkIWo'
+        const SUPABASE_URL = 'https://ptfmdwbfmlnrncsifaqb.supabase.co'
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0Zm1kd2JmbWxucm5jc2lmYXFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE2OTE0MTMsImV4cCI6MjA2NzI2NzQxM30.2Iuq4iScDqWV5KP6HHlvXmG2al084xO14FBTqpmOt90'
         
         // Si no tienes credenciales, usa el modo demo
         const isDemoMode = !SUPABASE_URL.includes('supabase.co')
@@ -54,8 +54,8 @@
             template: `
                 <div id="app">
                     <div class="header">
-                        <h1>🔐 Magic Link Authentication</h1>
-                        <p>Autenticación segura sin contraseñas con Supabase</p>
+                        <h1>🔐 Sistema de Autenticación</h1>
+                        <p>Ingresa con tus credenciales</p>
                         ${isDemoMode ? '<p class="demo-mode">⚠️ Modo Demo - Configura Supabase para funcionalidad completa</p>' : ''}
                     </div>
                     
@@ -73,19 +73,43 @@
                 'demo-component': {
                     template: `
                         <div class="demo-container">
+                            <!-- Modal de Registro -->
+                            <div v-if="showRegisterModal" class="modal-overlay" @click.self="showRegisterModal = false">
+                                <div class="modal-content">
+                                    <button class="modal-close" @click="showRegisterModal = false">×</button>
+                                    <h2>📧 Registro de Usuario</h2>
+                                    <p>Crea tu cuenta</p>
+                                    <input type="email" placeholder="tu@email.com" v-model="registerEmail" class="demo-input">
+                                    <input type="password" placeholder="Elige tu contraseña" v-model="registerPassword" class="demo-input">
+                                    <button @click="registerUser" class="demo-button">Registrarse</button>
+                                    <p class="modal-message" v-if="modalMessage" :class="modalMessageType">{{ modalMessage }}</p>
+                                </div>
+                            </div>
+                            
+                            <!-- Formulario de Login -->
                             <div v-if="!user" class="method-card">
-                                <h2>✉️ Magic Link Authentication</h2>
-                                <p>Autenticación sin contraseñas - Solo necesitas tu email</p>
-                                <input type="email" placeholder="tu@email.com" v-model="email" class="demo-input">
-                                <button @click="sendMagicLink" class="demo-button">Enviar Magic Link</button>
+                                <h2>🔑 Iniciar Sesión</h2>
+                                <p>Ingresa tus credenciales</p>
+                                <input type="email" placeholder="Email" v-model="username" class="demo-input">
+                                <input type="password" placeholder="Contraseña" v-model="password" class="demo-input">
+                                <button @click="login" class="demo-button">Iniciar Sesión</button>
+                                <p class="register-link">
+                                    ¿No tienes cuenta? <a href="#" @click.prevent="showRegisterModal = true">Regístrate aquí</a>
+                                </p>
                             </div>
                             
                             <div v-else class="user-dashboard">
                                 <h2>¡Bienvenido! 🎉</h2>
                                 <div class="user-info-card">
                                     <p><strong>Email:</strong> {{ user.email }}</p>
+                                    <p><strong>Usuario:</strong> {{ loginCredentials?.username || user.user_metadata?.username }}</p>
                                     <p><strong>ID de Usuario:</strong> {{ user.id }}</p>
                                     <p><strong>Sesión activa desde:</strong> {{ loginTime }}</p>
+                                </div>
+                                <div v-if="loginCredentials" class="credentials-info">
+                                    <h3>🔑 Credenciales de Acceso</h3>
+                                    <p><strong>Usuario:</strong> {{ loginCredentials.username }}</p>
+                                    <p><strong>Contraseña:</strong> {{ loginCredentials.password }}</p>
                                 </div>
                                 <div class="jwt-info">
                                     <h3>🔐 JWT Token Decodificado</h3>
@@ -121,11 +145,18 @@
                     `,
                     data() {
                         return {
-                            email: '',
+                            username: '',
+                            password: '',
+                            registerEmail: '',
+                            registerPassword: '',
+                            showRegisterModal: false,
                             message: '',
+                            modalMessage: '',
+                            modalMessageType: '',
                             user: null,
                             session: null,
-                            loginTime: new Date().toLocaleString()
+                            loginTime: new Date().toLocaleString(),
+                            loginCredentials: null
                         }
                     },
                     mounted() {
@@ -172,14 +203,118 @@
                         }
                     },
                     methods: {
-                        async sendMagicLink() {
-                            if (!this.email) {
-                                this.message = '❌ Por favor ingresa un email'
+                        generateCredentials(email) {
+                            // Generar usuario basado en el email
+                            const username = email.split('@')[0] + Math.floor(Math.random() * 1000)
+                            // Generar contraseña aleatoria segura
+                            const password = Math.random().toString(36).substring(2, 8) + Math.random().toString(36).substring(2, 8).toUpperCase() + '!'
+                            return { username, password }
+                        },
+                        async registerUser() {
+                            // Validaciones
+                            if (!this.registerEmail || !this.registerPassword) {
+                                this.modalMessage = '❌ Por favor completa todos los campos'
+                                this.modalMessageType = 'error'
                                 return
                             }
-                            const { error } = await supabase.auth.signInWithOtp({ email: this.email })
-                            this.message = error ? `❌ Error: ${error.message}` : '✅ ¡Revisa tu email!'
-                            if (!error) this.email = ''
+                            
+                            if (this.registerPassword.length < 6) {
+                                this.modalMessage = '❌ La contraseña debe tener al menos 6 caracteres'
+                                this.modalMessageType = 'error'
+                                return
+                            }
+                            
+                            // Registro en Supabase
+                            if (isDemoMode) {
+                                this.modalMessage = '✅ Demo: Usuario registrado exitosamente'
+                                this.modalMessageType = 'success'
+                                setTimeout(() => {
+                                    this.showRegisterModal = false
+                                    this.registerEmail = ''
+                                    this.registerPassword = ''
+                                }, 2000)
+                            } else {
+                                // Crear usuario en Supabase
+                                const { data, error } = await supabase.auth.signUp({
+                                    email: this.registerEmail,
+                                    password: this.registerPassword
+                                })
+                                
+                                // Si el registro fue exitoso pero creó una sesión, cerrarla
+                                if (!error && data.session) {
+                                    await supabase.auth.signOut()
+                                }
+                                
+                                if (error) {
+                                    if (error.code === 'user_already_exists') {
+                                        this.modalMessage = '❌ Este email ya está registrado'
+                                        this.modalMessageType = 'error'
+                                    } else {
+                                        this.modalMessage = `❌ Error: ${error.message}`
+                                        this.modalMessageType = 'error'
+                                    }
+                                } else {
+                                    this.modalMessage = '✅ ¡Registro exitoso! Ya puedes iniciar sesión'
+                                    this.modalMessageType = 'success'
+                                    
+                                    setTimeout(() => {
+                                        this.showRegisterModal = false
+                                        this.registerEmail = ''
+                                        this.registerPassword = ''
+                                        this.registerPasswordConfirm = ''
+                                        this.modalMessage = ''
+                                        this.message = '✅ Registro completado. Inicia sesión con tu email y contraseña'
+                                    }, 2000)
+                                }
+                            }
+                        },
+                        async login() {
+                            if (!this.username || !this.password) {
+                                this.message = '❌ Por favor ingresa usuario y contraseña'
+                                return
+                            }
+                            
+                            if (isDemoMode) {
+                                // Simulación para modo demo
+                                this.user = {
+                                    email: `${this.username}@demo.com`,
+                                    id: 'demo-user-123',
+                                    user_metadata: { username: this.username }
+                                }
+                                this.loginCredentials = {
+                                    username: this.username,
+                                    password: '******'
+                                }
+                                this.session = {
+                                    access_token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkZW1vLXVzZXItMTIzIiwiZW1haWwiOiJkZW1vQGV4YW1wbGUuY29tIiwiaWF0IjoxNjg5MDAwMDAwLCJleHAiOjE2ODkwMDM2MDB9.demo_signature_here'
+                                }
+                                this.message = '✅ ¡Demo: Sesión iniciada!'
+                            } else {
+                                // Login real con Supabase
+                                let loginEmail = this.username
+                                
+                                // Si el usuario ingresó un username sin @, necesitamos buscar el email
+                                // Por ahora, asumimos que es un email completo
+                                if (!this.username.includes('@')) {
+                                    this.message = '❌ Por favor ingresa tu email completo'
+                                    return
+                                }
+                                
+                                const { data, error } = await supabase.auth.signInWithPassword({
+                                    email: loginEmail,
+                                    password: this.password
+                                })
+                                
+                                if (error) {
+                                    this.message = `❌ Error: ${error.message}`
+                                } else {
+                                    // Guardamos las credenciales para mostrar
+                                    this.loginCredentials = {
+                                        username: data.user?.user_metadata?.username || this.username,
+                                        password: '******'
+                                    }
+                                }
+                            }
                         },
                         async signInOAuth(provider) {
                             const { error } = await supabase.auth.signInWithOAuth({ provider })
@@ -196,8 +331,10 @@
                             if (!error) {
                                 this.user = null
                                 this.session = null
+                                this.loginCredentials = null
                                 this.message = '👋 Has cerrado sesión'
-                                this.email = ''
+                                this.username = ''
+                                this.password = ''
                             }
                         }
                     }
@@ -405,6 +542,129 @@
         
         .demo-button.logout:hover {
             background: #d32f2f;
+        }
+        
+        .register-link {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .register-link a {
+            color: #4CAF50;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        
+        .register-link a:hover {
+            text-decoration: underline;
+        }
+        
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+        
+        .modal-content {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            max-width: 400px;
+            width: 90%;
+            position: relative;
+            animation: slideDown 0.3s ease;
+        }
+        
+        @keyframes slideDown {
+            from {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        .modal-close {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: none;
+            border: none;
+            font-size: 28px;
+            cursor: pointer;
+            color: #999;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: all 0.3s;
+        }
+        
+        .modal-close:hover {
+            background: #f5f5f5;
+            color: #333;
+        }
+        
+        .credentials-info {
+            background: #e8f5e9;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border: 1px solid #4CAF50;
+        }
+        
+        .credentials-info h3 {
+            margin-bottom: 15px;
+            color: #2e7d32;
+        }
+        
+        .credentials-info p {
+            margin: 8px 0;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        
+        .modal-message {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 14px;
+            text-align: center;
+        }
+        
+        .modal-message.error {
+            background: #ffebee;
+            color: #c62828;
+            border: 1px solid #ef5350;
+        }
+        
+        .modal-message.success {
+            background: #e8f5e9;
+            color: #2e7d32;
+            border: 1px solid #4caf50;
         }
         
         .jwt-decoder {
