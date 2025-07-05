@@ -60,6 +60,10 @@
               </span>
             </div>
           </div>
+          
+          <div v-else class="jwt-debug">
+            <p>Debug: {{ session?.access_token ? 'Token existe' : 'No hay token' }}</p>
+          </div>
         </div>
         
         <button @click="signOut" class="auth-button secondary">
