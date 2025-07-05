@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autenticación Sin Servidores - Demo</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <div id="app"></div>
+    
+    <script>
+        // Configurar Supabase (reemplaza con tus credenciales)
+        const SUPABASE_URL = 'https://kdxgwqszxdaexnrcyhvz.supabase.co'
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtkeGd3cXN6eGRhZXhucmN5aHZ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE2ODMzOTIsImV4cCI6MjA2NzI1OTM5Mn0.xPFSROtY_7dtQ0MoSs5kGbqk8o8rRv3VvbOhq-OkIWo'
+        
+        // Si no tienes credenciales, usa el modo demo
+        const isDemoMode = !SUPABASE_URL.includes('supabase.co')
+        
+        // Crear cliente de Supabase o mock para demo
+        const supabase = isDemoMode ? {
+            auth: {
+                signInWithOtp: async ({ email }) => {
+                    console.log('Demo: Enviando magic link a', email)
+                    return { data: {}, error: null }
+                },
+                signInWithOAuth: async ({ provider }) => {
+                    console.log('Demo: OAuth con', provider)
+                    window.alert(`Demo: Redirigiendo a ${provider}...`)
+                    return { data: {}, error: null }
+                },
+                getSession: async () => ({ data: { session: null } }),
+                onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+                signOut: async () => ({ error: null })
+            }
+        } : window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+        
+        // Hacer supabase global para los componentes
+        window.supabase = supabase
+    </script>
+    
+    <!-- Incluir componentes y App -->
+    <script src="./MagicLinkAuth.vue" type="text/x-template" id="magic-link-template"></script>
+    <script src="./OAuthAuth.vue" type="text/x-template" id="oauth-template"></script>
+    <script src="./BiometricAuth.vue" type="text/x-template" id="biometric-template"></script>
+    <script src="./App.vue" type="text/x-template" id="app-template"></script>
+    
+    <script>
+        // Montar la aplicación Vue
+        const { createApp } = Vue
+        
+        createApp({
+            template: `
+                <div id="app">
+                    <div class="header">
+                        <h1>🔐 Magic Link Authentication</h1>
+                        <p>Autenticación segura sin contraseñas con Supabase</p>
+                        ${isDemoMode ? '<p class="demo-mode">⚠️ Modo Demo - Configura Supabase para funcionalidad completa</p>' : ''}
+                    </div>
+                    
+                    <div class="auth-container">
+                        <component :is="currentView"></component>
+                    </div>
+                </div>
+            `,
+            data() {
+                return {
+                    currentView: 'demo-component'
+                }
+            },
+            components: {
+                'demo-component': {
+                    template: `
+                        <div class="demo-container">
+                            <div v-if="!user" class="method-card">
+                                <h2>✉️ Magic Link Authentication</h2>
+                                <p>Autenticación sin contraseñas - Solo necesitas tu email</p>
+                                <input type="email" placeholder="tu@email.com" v-model="email" class="demo-input">
+                                <button @click="sendMagicLink" class="demo-button">Enviar Magic Link</button>
+                            </div>
+                            
+                            <div v-else class="user-dashboard">
+                                <h2>¡Bienvenido! 🎉</h2>
+                                <div class="user-info-card">
+                                    <p><strong>Email:</strong> {{ user.email }}</p>
+                                    <p><strong>ID de Usuario:</strong> {{ user.id }}</p>
+                                    <p><strong>Sesión activa desde:</strong> {{ loginTime }}</p>
+                                </div>
+                                <div class="jwt-info">
+                                    <h3>🔐 JWT Token (Access Token)</h3>
+                                    <pre>{{ session?.access_token }}</pre>
+                                </div>
+                                <button @click="signOut" class="demo-button logout">Cerrar Sesión</button>
+                            </div>
+                            
+                            <div v-if="message" class="message">{{ message }}</div>
+                        </div>
+                    `,
+                    data() {
+                        return {
+                            email: '',
+                            message: '',
+                            user: null,
+                            session: null,
+                            loginTime: new Date().toLocaleString()
+                        }
+                    },
+                    mounted() {
+                        // Verificar sesión actual
+                        supabase.auth.getSession().then(({ data: { session } }) => {
+                            this.session = session
+                            this.user = session?.user || null
+                        })
+                        
+                        // Escuchar cambios de autenticación
+                        supabase.auth.onAuthStateChange((event, session) => {
+                            this.session = session
+                            this.user = session?.user || null
+                            if (event === 'SIGNED_IN') {
+                                this.message = '✅ ¡Has iniciado sesión exitosamente!'
+                                this.loginTime = new Date().toLocaleString()
+                            }
+                        })
+                    },
+                    methods: {
+                        async sendMagicLink() {
+                            if (!this.email) {
+                                this.message = '❌ Por favor ingresa un email'
+                                return
+                            }
+                            const { error } = await supabase.auth.signInWithOtp({ email: this.email })
+                            this.message = error ? `❌ Error: ${error.message}` : '✅ ¡Revisa tu email!'
+                            if (!error) this.email = ''
+                        },
+                        async signInOAuth(provider) {
+                            const { error } = await supabase.auth.signInWithOAuth({ provider })
+                            if (error) this.message = `❌ Error: ${error.message}`
+                        },
+                        async setupBiometric() {
+                            if (!window.PublicKeyCredential) {
+                                this.message = '❌ WebAuthn no disponible en este navegador'
+                                return
+                            }
+                        },
+                        async signOut() {
+                            const { error } = await supabase.auth.signOut()
+                            if (!error) {
+                                this.user = null
+                                this.session = null
+                                this.message = '👋 Has cerrado sesión'
+                                this.email = ''
+                            }
+                        }
+                    }
+                }
+            }
+        }).mount('#app')
+    </script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        #app {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.2rem;
+            color: #666;
+        }
+        
+        .demo-mode {
+            background: #fff3cd;
+            color: #856404;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            display: inline-block;
+        }
+        
+        .demo-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 30px;
+        }
+        
+        .method-card {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 400px;
+            width: 100%;
+        }
+        
+        .method-card h2 {
+            margin-bottom: 10px;
+            color: #2c3e50;
+        }
+        
+        .method-card p {
+            color: #666;
+            margin-bottom: 20px;
+        }
+        
+        .demo-input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            margin-bottom: 15px;
+            transition: border-color 0.3s;
+        }
+        
+        .demo-input:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
+        
+        .demo-button {
+            width: 100%;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 10px;
+        }
+        
+        .demo-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        
+        .demo-button:active {
+            transform: translateY(0);
+        }
+        
+        .demo-button {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .oauth-google {
+            background: #4285F4;
+        }
+        
+        .oauth-github {
+            background: #333;
+        }
+        
+        .biometric {
+            background: #2196F3;
+        }
+        
+        .message {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: white;
+            padding: 15px 30px;
+            border-radius: 50px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            animation: slideUp 0.3s ease;
+        }
+        
+        @keyframes slideUp {
+            from {
+                transform: translate(-50%, 100px);
+                opacity: 0;
+            }
+            to {
+                transform: translate(-50%, 0);
+                opacity: 1;
+            }
+        }
+        
+        .user-dashboard {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+        }
+        
+        .user-info-card {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            text-align: left;
+        }
+        
+        .user-info-card p {
+            margin: 10px 0;
+            word-break: break-all;
+        }
+        
+        .jwt-info {
+            background: #f0f0f0;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            text-align: left;
+        }
+        
+        .jwt-info h3 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+        
+        .jwt-info pre {
+            background: white;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        .demo-button.logout {
+            background: #f44336;
+        }
+        
+        .demo-button.logout:hover {
+            background: #d32f2f;
+        }
+        
+        @media (max-width: 768px) {
+            .demo-container {
+                padding: 0 10px;
+            }
+        }
+    </style>
+</body>
+</html>
