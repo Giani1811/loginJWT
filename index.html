@@ -110,6 +110,18 @@
                                 </div>
                             </div>
                             
+                            <!-- Modal de Magic Link -->
+                            <div v-if="showMagicLinkModal" class="modal-overlay" @click.self="showMagicLinkModal = false">
+                                <div class="modal-content">
+                                    <button class="modal-close" @click="showMagicLinkModal = false">×</button>
+                                    <h2>✉️ Magic Link</h2>
+                                    <p>Ingresa tu email para recibir un link de acceso</p>
+                                    <input type="email" placeholder="tu@email.com" v-model="magicLinkEmail" class="demo-input">
+                                    <button @click="sendMagicLink" class="demo-button">Enviar Magic Link</button>
+                                    <p class="modal-message" v-if="magicLinkMessage" :class="magicLinkMessageType">{{ magicLinkMessage }}</p>
+                                </div>
+                            </div>
+                            
                             <!-- Formulario de Login -->
                             <div v-if="!user && !showResetPasswordModal" class="method-card">
                                 <h2>🔑 Iniciar Sesión</h2>
@@ -117,6 +129,19 @@
                                 <input type="email" placeholder="Email" v-model="username" class="demo-input">
                                 <input type="password" placeholder="Contraseña" v-model="password" class="demo-input">
                                 <button @click="login" class="demo-button">Iniciar Sesión</button>
+                                
+                                <div class="oauth-divider">
+                                    <span>o inicia con</span>
+                                </div>
+                                
+                                <button @click="loginWithGitHub" class="demo-button oauth-github">
+                                    🐱 Iniciar con GitHub
+                                </button>
+                                
+                                <button @click="showMagicLinkModal = true" class="demo-button magic-link">
+                                    ✉️ Ingresa con Magic Link
+                                </button>
+                                
                                 <p class="register-link">
                                     <a href="#" @click.prevent="showForgotPasswordModal = true">¿Olvidaste tu contraseña?</a>
                                 </p>
@@ -179,9 +204,11 @@
                             showRegisterModal: false,
                             showForgotPasswordModal: false,
                             showResetPasswordModal: false,
+                            showMagicLinkModal: false,
                             resetEmail: '',
                             newPassword: '',
                             newPasswordConfirm: '',
+                            magicLinkEmail: '',
                             message: '',
                             modalMessage: '',
                             modalMessageType: '',
@@ -189,6 +216,8 @@
                             resetMessageType: '',
                             updateMessage: '',
                             updateMessageType: '',
+                            magicLinkMessage: '',
+                            magicLinkMessageType: '',
                             user: null,
                             session: null,
                             loginTime: new Date().toLocaleString(),
@@ -367,6 +396,45 @@
                                         password: '******'
                                     }
                                 }
+                            }
+                        },
+                        async loginWithGitHub() {
+                            const { error } = await supabase.auth.signInWithOAuth({
+                                provider: 'github',
+                                options: {
+                                    redirectTo: window.location.origin
+                                }
+                            })
+                            if (error) {
+                                this.message = `❌ Error: ${error.message}`
+                            }
+                        },
+                        async sendMagicLink() {
+                            if (!this.magicLinkEmail) {
+                                this.magicLinkMessage = '❌ Por favor ingresa tu email'
+                                this.magicLinkMessageType = 'error'
+                                return
+                            }
+                            
+                            const { error } = await supabase.auth.signInWithOtp({
+                                email: this.magicLinkEmail,
+                                options: {
+                                    emailRedirectTo: window.location.origin
+                                }
+                            })
+                            
+                            if (error) {
+                                this.magicLinkMessage = `❌ Error: ${error.message}`
+                                this.magicLinkMessageType = 'error'
+                            } else {
+                                this.magicLinkMessage = '✅ ¡Revisa tu email para el Magic Link!'
+                                this.magicLinkMessageType = 'success'
+                                setTimeout(() => {
+                                    this.showMagicLinkModal = false
+                                    this.magicLinkEmail = ''
+                                    this.magicLinkMessage = ''
+                                    this.message = '📧 Revisa tu email y haz clic en el Magic Link para ingresar'
+                                }, 3000)
                             }
                         },
                         async signInOAuth(provider) {
@@ -579,7 +647,48 @@
         }
         
         .oauth-github {
-            background: #333;
+            background: #24292e;
+            color: white;
+            margin-top: 10px;
+        }
+        
+        .oauth-github:hover {
+            background: #1a1e22;
+            transform: translateY(-2px);
+        }
+        
+        .magic-link {
+            background: #9c27b0;
+            color: white;
+            margin-top: 10px;
+        }
+        
+        .magic-link:hover {
+            background: #7b1fa2;
+            transform: translateY(-2px);
+        }
+        
+        .oauth-divider {
+            text-align: center;
+            margin: 20px 0 10px 0;
+            position: relative;
+        }
+        
+        .oauth-divider::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: #e0e0e0;
+        }
+        
+        .oauth-divider span {
+            background: white;
+            padding: 0 15px;
+            color: #666;
+            font-size: 14px;
         }
         
         .biometric {
