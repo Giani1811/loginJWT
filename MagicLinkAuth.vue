@@ -75,7 +75,7 @@ export default {
         const { error: signInError } = await supabase.auth.signInWithOtp({
           email: email.value,
           options: {
-            emailRedirectTo: window.location.origin
+            emailRedirectTo: 'https://login-jwt-omega.vercel.app'
           }
         })
         
