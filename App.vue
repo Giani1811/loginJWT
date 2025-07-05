@@ -245,7 +245,6 @@ body {
   position: relative;
   color: #666;
 }
-
 .demo-info li:before {
   content: "→";
   position: absolute;
