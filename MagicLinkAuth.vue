@@ -34,7 +34,34 @@
       <div v-else class="user-info">
         <h3>¡Bienvenido! 🎉</h3>
         <p>{{ user.email }}</p>
-        <pre class="jwt-display">{{ sessionInfo }}</pre>
+        
+        <div class="jwt-section">
+          <h4>🔐 JWT Token Decodificado</h4>
+          
+          <div v-if="jwtDecoded" class="jwt-decoder">
+            <div class="jwt-part">
+              <h5>📋 Header</h5>
+              <pre class="jwt-display header">{{ JSON.stringify(jwtDecoded.header, null, 2) }}</pre>
+            </div>
+            
+            <div class="jwt-part">
+              <h5>📦 Payload</h5>
+              <pre class="jwt-display payload">{{ JSON.stringify(jwtDecoded.payload, null, 2) }}</pre>
+            </div>
+            
+            <div class="jwt-part">
+              <h5>🔏 Signature</h5>
+              <pre class="jwt-display signature">{{ jwtDecoded.signature }}</pre>
+            </div>
+            
+            <div class="jwt-status">
+              <span :class="['status-badge', jwtDecoded.isExpired ? 'expired' : 'valid']">
+                {{ jwtDecoded.isExpired ? '❌ Expirado' : '✅ Válido' }}
+              </span>
+            </div>
+          </div>
+        </div>
+        
         <button @click="signOut" class="auth-button secondary">
           Cerrar Sesión
         </button>
@@ -64,6 +91,31 @@ export default {
         email: session.value.user.email,
         expires_at: new Date(session.value.expires_at * 1000).toLocaleString()
       }, null, 2)
+    })
+    
+    const jwtDecoded = computed(() => {
+      if (!session.value?.access_token) return null
+      
+      try {
+        const token = session.value.access_token
+        const parts = token.split('.')
+        
+        if (parts.length !== 3) return null
+        
+        const header = JSON.parse(atob(parts[0]))
+        const payload = JSON.parse(atob(parts[1]))
+        const signature = parts[2]
+        
+        return {
+          raw: token,
+          header,
+          payload,
+          signature,
+          isExpired: payload.exp * 1000 < Date.now()
+        }
+      } catch (error) {
+        return null
+      }
     })
     
     const handleMagicLink = async () => {
@@ -121,6 +173,7 @@ export default {
       error,
       user,
       sessionInfo,
+      jwtDecoded,
       handleMagicLink,
       signOut
     }
@@ -226,13 +279,77 @@ h2 {
   text-align: center;
 }
 
-.jwt-display {
-  background: #f5f5f5;
-  padding: 16px;
-  border-radius: 8px;
+.jwt-section {
   margin: 20px 0;
+}
+
+.jwt-decoder {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.jwt-part {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.jwt-part h5 {
+  margin: 0;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  font-size: 14px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.jwt-display {
+  padding: 12px;
+  margin: 0;
   text-align: left;
-  font-size: 12px;
+  font-size: 11px;
   overflow-x: auto;
+  background: white;
+  border: none;
+}
+
+.jwt-display.header {
+  background: #e3f2fd;
+  color: #1976d2;
+}
+
+.jwt-display.payload {
+  background: #f3e5f5;
+  color: #7b1fa2;
+}
+
+.jwt-display.signature {
+  background: #fff3e0;
+  color: #f57c00;
+  font-family: monospace;
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+.jwt-status {
+  text-align: center;
+  margin-top: 16px;
+}
+
+.status-badge {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.status-badge.valid {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.status-badge.expired {
+  background: #ffebee;
+  color: #c62828;
 }
 </style>
