@@ -86,19 +86,46 @@
                                 </div>
                             </div>
                             
+                            <!-- Modal de Recuperar Contraseña -->
+                            <div v-if="showForgotPasswordModal" class="modal-overlay" @click.self="showForgotPasswordModal = false">
+                                <div class="modal-content">
+                                    <button class="modal-close" @click="showForgotPasswordModal = false">×</button>
+                                    <h2>🔑 Recuperar Contraseña</h2>
+                                    <p>Ingresa tu email para recibir instrucciones</p>
+                                    <input type="email" placeholder="tu@email.com" v-model="resetEmail" class="demo-input">
+                                    <button @click="sendPasswordReset" class="demo-button">Enviar instrucciones</button>
+                                    <p class="modal-message" v-if="resetMessage" :class="resetMessageType">{{ resetMessage }}</p>
+                                </div>
+                            </div>
+                            
+                            <!-- Modal de Cambiar Contraseña (cuando viene del email) -->
+                            <div v-if="showResetPasswordModal" class="modal-overlay">
+                                <div class="modal-content">
+                                    <h2>🔐 Nueva Contraseña</h2>
+                                    <p>Ingresa tu nueva contraseña</p>
+                                    <input type="password" placeholder="Nueva contraseña" v-model="newPassword" class="demo-input">
+                                    <input type="password" placeholder="Confirmar contraseña" v-model="newPasswordConfirm" class="demo-input">
+                                    <button @click="updatePassword" class="demo-button">Actualizar contraseña</button>
+                                    <p class="modal-message" v-if="updateMessage" :class="updateMessageType">{{ updateMessage }}</p>
+                                </div>
+                            </div>
+                            
                             <!-- Formulario de Login -->
-                            <div v-if="!user" class="method-card">
+                            <div v-if="!user && !showResetPasswordModal" class="method-card">
                                 <h2>🔑 Iniciar Sesión</h2>
                                 <p>Ingresa tus credenciales</p>
                                 <input type="email" placeholder="Email" v-model="username" class="demo-input">
                                 <input type="password" placeholder="Contraseña" v-model="password" class="demo-input">
                                 <button @click="login" class="demo-button">Iniciar Sesión</button>
                                 <p class="register-link">
+                                    <a href="#" @click.prevent="showForgotPasswordModal = true">¿Olvidaste tu contraseña?</a>
+                                </p>
+                                <p class="register-link">
                                     ¿No tienes cuenta? <a href="#" @click.prevent="showRegisterModal = true">Regístrate aquí</a>
                                 </p>
                             </div>
                             
-                            <div v-else class="user-dashboard">
+                            <div v-else-if="user && !showResetPasswordModal" class="user-dashboard">
                                 <h2>¡Bienvenido! 🎉</h2>
                                 <div class="user-info-card">
                                     <p><strong>Email:</strong> {{ user.email }}</p>
@@ -150,9 +177,18 @@
                             registerEmail: '',
                             registerPassword: '',
                             showRegisterModal: false,
+                            showForgotPasswordModal: false,
+                            showResetPasswordModal: false,
+                            resetEmail: '',
+                            newPassword: '',
+                            newPasswordConfirm: '',
                             message: '',
                             modalMessage: '',
                             modalMessageType: '',
+                            resetMessage: '',
+                            resetMessageType: '',
+                            updateMessage: '',
+                            updateMessageType: '',
                             user: null,
                             session: null,
                             loginTime: new Date().toLocaleString(),
@@ -160,17 +196,34 @@
                         }
                     },
                     mounted() {
-                        // Verificar sesión actual
-                        supabase.auth.getSession().then(({ data: { session } }) => {
-                            this.session = session
-                            this.user = session?.user || null
-                        })
+                        // Verificar si viene del email de recuperación
+                        const hashParams = new URLSearchParams(window.location.hash.substring(1))
+                        const accessToken = hashParams.get('access_token')
+                        const type = hashParams.get('type')
+                        
+                        if (accessToken && type === 'recovery') {
+                            // Usuario viene del email de recuperación
+                            this.showResetPasswordModal = true
+                            // NO limpiar la URL todavía, necesitamos el token
+                            // Supabase necesita el token en la URL para validar
+                        } else {
+                            // Verificar sesión actual normal
+                            supabase.auth.getSession().then(({ data: { session } }) => {
+                                this.session = session
+                                this.user = session?.user || null
+                            })
+                        }
                         
                         // Escuchar cambios de autenticación
                         supabase.auth.onAuthStateChange((event, session) => {
+                            // Si estamos en modo recuperación, no actualizar usuario
+                            if (this.showResetPasswordModal) {
+                                return
+                            }
+                            
                             this.session = session
                             this.user = session?.user || null
-                            if (event === 'SIGNED_IN') {
+                            if (event === 'SIGNED_IN' && !this.showResetPasswordModal) {
                                 this.message = '✅ ¡Has iniciado sesión exitosamente!'
                                 this.loginTime = new Date().toLocaleString()
                             }
@@ -335,6 +388,73 @@
                                 this.message = '👋 Has cerrado sesión'
                                 this.username = ''
                                 this.password = ''
+                            }
+                        },
+                        async sendPasswordReset() {
+                            if (!this.resetEmail) {
+                                this.resetMessage = '❌ Por favor ingresa tu email'
+                                this.resetMessageType = 'error'
+                                return
+                            }
+                            
+                            const { error } = await supabase.auth.resetPasswordForEmail(this.resetEmail, {
+                                redirectTo: window.location.origin + window.location.pathname
+                            })
+                            
+                            if (error) {
+                                this.resetMessage = `❌ Error: ${error.message}`
+                                this.resetMessageType = 'error'
+                            } else {
+                                this.resetMessage = '✅ Revisa tu email para las instrucciones'
+                                this.resetMessageType = 'success'
+                                setTimeout(() => {
+                                    this.showForgotPasswordModal = false
+                                    this.resetEmail = ''
+                                    this.resetMessage = ''
+                                }, 3000)
+                            }
+                        },
+                        async updatePassword() {
+                            if (!this.newPassword || !this.newPasswordConfirm) {
+                                this.updateMessage = '❌ Por favor completa todos los campos'
+                                this.updateMessageType = 'error'
+                                return
+                            }
+                            
+                            if (this.newPassword !== this.newPasswordConfirm) {
+                                this.updateMessage = '❌ Las contraseñas no coinciden'
+                                this.updateMessageType = 'error'
+                                return
+                            }
+                            
+                            if (this.newPassword.length < 6) {
+                                this.updateMessage = '❌ La contraseña debe tener al menos 6 caracteres'
+                                this.updateMessageType = 'error'
+                                return
+                            }
+                            
+                            const { error } = await supabase.auth.updateUser({
+                                password: this.newPassword
+                            })
+                            
+                            if (error) {
+                                this.updateMessage = `❌ Error: ${error.message}`
+                                this.updateMessageType = 'error'
+                            } else {
+                                this.updateMessage = '✅ Contraseña actualizada exitosamente'
+                                this.updateMessageType = 'success'
+                                
+                                // Cerrar sesión y redirigir al login
+                                setTimeout(async () => {
+                                    await supabase.auth.signOut()
+                                    this.showResetPasswordModal = false
+                                    this.newPassword = ''
+                                    this.newPasswordConfirm = ''
+                                    this.updateMessage = ''
+                                    this.message = '✅ Contraseña actualizada. Por favor inicia sesión con tu nueva contraseña'
+                                    // Ahora sí limpiamos la URL
+                                    window.location.hash = ''
+                                }, 2000)
                             }
                         }
                     }
